@@ -1,5 +1,7 @@
 # Omarchy Motion
 
+`omarchy plugin add https://github.com/YOU/YOUR-PLUGIN.git --enable`
+
 Control Omarchy with hand and body movements captured by your webcam. MediaPipe
 Hand Landmarker and Pose Landmarker run locally. The application does not send,
 record, or save camera frames. Model downloads are an explicit setup step;
