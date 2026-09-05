@@ -141,7 +141,7 @@ def launch():
         try:
             candidate = copy.deepcopy(c)
             for key, var in fields.items():
-                candidate[key] = type(c[key])(var.get())
+                candidate[key] = config.parse_field(key, var.get())
             candidate.update({key: var.get() for key, var in flags.items()})
             config.save(candidate)
             c.update(candidate)
