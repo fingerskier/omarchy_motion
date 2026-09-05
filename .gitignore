@@ -5,3 +5,6 @@ build/
 dist/
 models/*.task
 .pytest_cache/
+# Local reference images; exclude until source/redistribution terms are recorded.
+asset/ASLalphabet-high.png
+asset/ASLnumbers-high.png

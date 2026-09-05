@@ -7,11 +7,20 @@ name = "omarchy-motion"
 version = "0.1.0"
 description = "Offline webcam gesture control for Omarchy and Hyprland"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.11,<3.14"
-dependencies = ["mediapipe>=0.10.32,<0.11", "opencv-contrib-python>=4.11,<5"]
+dependencies = [
+    "mediapipe>=0.10.32,<0.11",
+    "opencv-contrib-python>=4.11,<5",
+    "pywayland>=0.4.19,<0.5",
+]
 
 [project.scripts]
 omarchy-motion = "omarchy_motion.cli:main"
+
+[tool.setuptools.package-data]
+"omarchy_motion.protocols" = ["*.xml", "README.md"]
 
 [tool.setuptools.packages.find]
 include = ["omarchy_motion*"]

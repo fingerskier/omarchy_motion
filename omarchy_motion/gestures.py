@@ -1,13 +1,16 @@
 """Pure landmark-to-action state machine; no camera or desktop dependencies."""
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import dist
+from .asl import Recognizer, features
+from .chords import ChordEngine, ChordResult
 
 
 @dataclass
 class Observation:
     hands: dict  # anatomical hand name -> 21 (x, y) landmarks
     pose: list  # 33 (x, y, visibility) landmarks, or []
+    shapes: dict = field(default_factory=dict)  # aspect-correct image landmarks for ASL
 
 
 class GestureEngine:
@@ -18,8 +21,28 @@ class GestureEngine:
         self.previous = set()
         self.last_fire = {}
         self.cursor = None
+        self.recognizer = Recognizer(config["asl_samples"])
+        self.chords = ChordEngine(config)
+        self.chord_status = ChordResult()
+        self.symbols = {}
 
     def step(self, obs, now):
+        events = self._legacy_step(obs, now)
+        self.symbols = {hand: self.recognizer.predict(features(points), hand)
+                        for hand, points in (obs.shapes or obs.hands).items()}
+        if not self.c["chords_enabled"]:
+            self.chord_status = ChordResult()
+            return events
+        self.chord_status = self.chords.step(
+            self.symbols.get("Right").symbol if "Right" in self.symbols else None,
+            self.symbols.get("Left").symbol if "Left" in self.symbols else None,
+            "Left" in obs.hands, now)
+        if self.chord_status.suppress:
+            self.cursor = None
+            return self.chord_status.events
+        return events
+
+    def _legacy_step(self, obs, now):
         active, positions = set(), {}
         for hand in ("Left", "Right"):
             p = obs.hands.get(hand)

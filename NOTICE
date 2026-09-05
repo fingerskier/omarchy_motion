@@ -1,0 +1,12 @@
+Omarchy Motion
+Copyright 2026 fingerskier
+
+Original Motion code is licensed under the Apache License, Version 2.0.
+
+The vendored wlr-virtual-pointer protocol and generated bindings retain
+Copyright (c) 2019 Josef Gajdusek and their MIT license notices in
+omarchy_motion/protocols/wlr-virtual-pointer-unstable-v1.xml and
+omarchy_motion/protocols/wlr_virtual_pointer_unstable_v1.py.
+
+MediaPipe models are downloaded separately from Google. Models and dependencies
+retain their own licenses and are not relicensed by this project.

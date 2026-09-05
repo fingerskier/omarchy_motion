@@ -11,8 +11,9 @@ from . import config, service
 def launch():
     root = tk.Tk()
     root.title("Omarchy Motion")
-    root.geometry("850x720")
+    root.geometry("900x800")
     c = config.read()
+    baseline = copy.deepcopy(c)
     results = queue.Queue()
     status = tk.StringVar(value="Checking service…")
 
@@ -52,6 +53,13 @@ def launch():
     ttk.Button(controls, text="Switch off", command=lambda: background(lambda: service.control("off"))).pack(side="right")
     ttk.Button(controls, text="Switch on", command=lambda: background(lambda: service.control("on"))).pack(side="right", padx=8)
     ttk.Label(frame, text="Offline hand and body tracking · Changes take effect when saved", padding=(0, 10)).pack(anchor="w")
+    outer = frame
+    notebook = ttk.Notebook(outer)
+    notebook.pack(fill="both", expand=True)
+    asl_page = ttk.Frame(notebook, padding=4)
+    frame = ttk.Frame(notebook, padding=4)
+    notebook.add(asl_page, text="ASL commands")
+    notebook.add(frame, text="Pointer, camera & other gestures")
 
     tree = ttk.Treeview(frame, columns=("enabled", "hand", "gesture", "action"), show="tree headings", height=8)
     tree.heading("#0", text="Mapping")
@@ -133,9 +141,11 @@ def launch():
         ttk.Label(tuning, text=key.replace("_", " ").title()).grid(row=row, column=col * 2, sticky="w", padx=(0, 12))
         ttk.Entry(tuning, textvariable=fields[key], width=18).grid(row=row, column=col * 2 + 1, padx=(0, 24), pady=2)
     flags = {}
-    for i, (key, label) in enumerate((("mirror", "Mirror camera"), ("swap_hands", "Swap hand labels"), ("preview", "Live preview"), ("dry_run", "Test mode (no desktop actions)"))):
+    for i, (key, label) in enumerate((("mirror", "Mirror camera"), ("swap_hands", "Swap hand labels"), ("preview", "Separate preview window"), ("dry_run", "Test mode (no desktop actions)"))):
         flags[key] = tk.BooleanVar(value=c[key])
         ttk.Checkbutton(tuning, text=label, variable=flags[key]).grid(row=5 + i // 2, column=(i % 2) * 2, columnspan=2, sticky="w")
+    from .ui_asl import build
+    refresh_asl = build(asl_page, c, fields, flags, background)
 
     def save():
         try:
@@ -143,14 +153,22 @@ def launch():
             for key, var in fields.items():
                 candidate[key] = config.parse_field(key, var.get())
             candidate.update({key: var.get() for key, var in flags.items()})
+            candidate = config.merge_edits(baseline, candidate, config.read())
             config.save(candidate)
             c.update(candidate)
+            baseline.clear()
+            baseline.update(copy.deepcopy(candidate))
+            for key, var in fields.items():
+                var.set(str(c[key]))
+            for key, var in flags.items():
+                var.set(c[key])
+            refresh()
+            refresh_asl()
             background(lambda: service.control("restart") if service.state() == "active" else None)
         except (ValueError, OSError) as e:
             messagebox.showerror("Cannot save settings", str(e), parent=root)
 
-    ttk.Button(frame, text="Save settings", command=save).pack(anchor="e")
-    ttk.Label(frame, text="Point with index finger · Pinch middle finger to thumb · Swipe with an open palm\nHand names are your left/right. Enable test mode and preview to check calibration.", padding=(0, 10)).pack(anchor="w")
+    ttk.Button(outer, text="Save settings", command=save).pack(anchor="e", pady=6)
     refresh()
     poll()
     tick()

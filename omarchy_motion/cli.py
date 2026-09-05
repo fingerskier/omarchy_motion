@@ -9,8 +9,15 @@ from . import config, service
 def main():
     parser = argparse.ArgumentParser(description="Offline gesture control for Omarchy")
     sub = parser.add_subparsers(dest="command", required=True)
-    for cmd in ("on", "off", "toggle", "status", "settings", "models", "worker", "init", "list"):
+    for cmd in ("on", "off", "toggle", "status", "settings", "models", "worker", "init", "list", "panel"):
         sub.add_parser(cmd)
+    from .panel import QUICK_SETTINGS
+    setting = sub.add_parser("set", help="Update one quick setting without replacing other configuration")
+    setting.add_argument("key", choices=QUICK_SETTINGS)
+    setting.add_argument("value", choices=("true", "false"))
+    calibrate = sub.add_parser("calibrate", help="Capture a local ASL handshape sample through the service")
+    calibrate.add_argument("--hand", choices=("Left", "Right"), required=True)
+    calibrate.add_argument("--symbol", required=True)
     add = sub.add_parser("add", help="Build a gesture/action mapping")
     add.add_argument("name")
     add.add_argument("--hand", choices=("Left", "Right"), required=True)
@@ -29,6 +36,19 @@ def main():
         elif args.command == "settings":
             from .ui import launch
             launch()
+        elif args.command == "panel":
+            from .panel import stream
+            stream()
+        elif args.command == "set":
+            from .panel import set_setting
+            set_setting(args.key, args.value == "true")
+            if service.state() == "active":
+                service.control("restart")
+        elif args.command == "calibrate":
+            from .calibration import request
+            request(args.hand, args.symbol.upper())
+            service.control("on")
+            print("Watch the preview: two-second countdown, then hold the sign still. Only numeric features are saved.")
         else:
             c = config.read()
             if args.command == "worker":

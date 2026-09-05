@@ -1,3 +1,4 @@
 include uv.lock
-recursive-include plugin *.json *.qml
-recursive-include scripts *.py
+include manifest.json LICENSE NOTICE
+recursive-include plugin *.qml
+recursive-include scripts *.py *.qml

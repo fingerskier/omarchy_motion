@@ -31,6 +31,11 @@ def hand(shape="point", x=0.5, pinch=1):
 class GesturesTest(unittest.TestCase):
     def setUp(self):
         self.c = config.defaults()
+        # Legacy swipes remain available as opt-in mappings.
+        self.c["bindings"] += [
+            {"name": f"{side} {direction}", "hand": side, "gesture": f"swipe_{direction}",
+             "action": f"{action}_{direction}", "enabled": True, "cooldown": 0.8}
+            for side, action in (("Left", "workspace"), ("Right", "window")) for direction in ("left", "right")]
         self.engine = GestureEngine(self.c)
 
     def step(self, points, time, side="Right", pose=None):
@@ -125,21 +130,28 @@ class BackendTest(unittest.TestCase):
     def test_monitor_scale_rotation_and_offset(self):
         self.assertEqual(monitor_geometry({"x": -1080, "y": 50, "width": 3840, "height": 2160, "scale": 2, "transform": 1}), (-1080, 50, 1080, 1920))
 
+    @patch("omarchy_motion.backend.VirtualPointer")
     @patch("omarchy_motion.backend.request")
-    def test_dispatch_coordinates_and_actions(self, request):
+    def test_dispatch_coordinates_and_actions(self, request, pointer):
         request.return_value = json.dumps([{"name": "DP-1", "focused": True, "x": -960, "y": 0, "width": 1920, "height": 1080, "scale": 2}])
         hypr = Hyprland()
         request.assert_called_with("j/monitors")
+        pointer.assert_called_once_with("DP-1", 960, 540)
         request.return_value = "ok"
+        request.reset_mock()
         self.assertTrue(hypr.dispatch("cursor", (0, 1)))
-        request.assert_called_with("dispatch movecursor -960 539")
+        pointer.return_value.move.assert_called_once_with((0, 1))
         hypr.dispatch("click", None)
-        request.assert_called_with("dispatch sendshortcut , mouse:272,")
+        pointer.return_value.click.assert_called_once_with()
+        request.assert_not_called()
         hypr.dispatch("window_left", None)
         request.assert_called_with("dispatch movetoworkspacesilent r-1")
+        hypr.close()
+        pointer.return_value.close.assert_called_once_with()
 
+    @patch("omarchy_motion.backend.VirtualPointer")
     @patch("omarchy_motion.backend.request")
-    def test_rejected_dispatch_is_logged_once_not_fatal(self, request):
+    def test_rejected_dispatch_is_logged_once_not_fatal(self, request, pointer):
         request.return_value = json.dumps([{"name": "DP-1", "focused": True, "x": 0, "y": 0, "width": 1920, "height": 1080, "scale": 1}])
         hypr = Hyprland()
         request.return_value = "Window not found"
@@ -147,19 +159,21 @@ class BackendTest(unittest.TestCase):
             self.assertFalse(hypr.dispatch("window_left", None))
             self.assertFalse(hypr.dispatch("window_left", None))
             request.return_value = "ok"
-            self.assertTrue(hypr.dispatch("click", None))
+            self.assertTrue(hypr.dispatch("window_right", None))
             request.return_value = "Window not found"
             self.assertFalse(hypr.dispatch("toggle_floating", None))
         self.assertEqual(err.getvalue().count("Window not found"), 2)
         self.assertIn("rejected movetoworkspacesilent", err.getvalue())
 
+    @patch("omarchy_motion.backend.VirtualPointer")
     @patch("omarchy_motion.backend.request")
-    def test_dry_run_never_contacts_desktop(self, request):
+    def test_dry_run_never_contacts_desktop(self, request, pointer):
         hypr = Hyprland(dry_run=True)
         with contextlib.redirect_stdout(io.StringIO()) as out:
             hypr.dispatch("cursor", (1, 1))
             hypr.dispatch("click", None)
         request.assert_not_called()
+        pointer.assert_not_called()
         self.assertEqual(out.getvalue(), "Gesture action: click\n")
 
     def test_socket_request_and_instance_discovery(self):
@@ -188,7 +202,8 @@ class BackendTest(unittest.TestCase):
             # Discovery without a signature: a stale entry from a dead compositor must not count.
             stale = path.parent.parent / "dead/.socket.sock"
             stale.parent.mkdir()
-            socket.socket(socket.AF_UNIX, socket.SOCK_STREAM).bind(str(stale))
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as dead:
+                dead.bind(str(stale))
             with patch.dict("os.environ", {"XDG_RUNTIME_DIR": d}, clear=True):
                 with self.assertRaisesRegex(RuntimeError, "not found"):
                     backend.socket_path()
@@ -216,7 +231,7 @@ class BackendTest(unittest.TestCase):
 
 
 class RuntimeTest(unittest.TestCase):
-    def exercise(self, stop_during_read=False, bindings=None, hand_frames=None):
+    def exercise(self, stop_during_read=False, bindings=None, hand_frames=None, empty_on_stop=False):
         from omarchy_motion import runtime
         cv = MagicMock()
         mp = MagicMock()
@@ -231,10 +246,10 @@ class RuntimeTest(unittest.TestCase):
 
         def capture():
             if frames:
-                return True, MagicMock()
+                return True, MagicMock(shape=(480, 640, 3))
             if stop_during_read:
                 handlers[signal.SIGTERM]()
-                return True, MagicMock()
+                return (False, None) if empty_on_stop else (True, MagicMock())
             return False, None
 
         cap.read.side_effect = capture
@@ -274,6 +289,7 @@ class RuntimeTest(unittest.TestCase):
                 if not hand_frames:
                     hypr.return_value.dispatch.assert_not_called()
                     ready.assert_not_called()
+                hypr.return_value.close.assert_called_once()
         cap.release.assert_called_once()
         mp.tasks.vision.HandLandmarker.create_from_options.return_value.__exit__.assert_called_once()
         return mp, observations
@@ -284,6 +300,9 @@ class RuntimeTest(unittest.TestCase):
 
     def test_stop_signal_prevents_actions_and_releases_camera(self):
         self.exercise(stop_during_read=True)
+
+    def test_stop_interrupting_camera_read_exits_successfully(self):
+        self.exercise(stop_during_read=True, empty_on_stop=True)
 
     def test_pose_model_only_loads_for_body_bindings(self):
         raise_hand = {"name": "Raise", "hand": "Left", "gesture": "hand_raised", "action": "toggle_floating", "cooldown": 1, "enabled": True}
