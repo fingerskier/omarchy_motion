@@ -22,9 +22,12 @@ composes built-in gesture primitives; it does not train new gestures from video.
 
 The global switch starts/stops a user service. **Off releases the webcam and
 stops all actions.** It starts off, does not automatically enable at login, and
-stops when the graphical session ends. Camera/model/desktop errors stop the
-service and appear in its journal. The bar shows starting, active, failed, or off
-state. It reports active only after the first successful inference frame.
+stops when the graphical session ends. Camera, model, and compositor-connection
+errors stop the service and appear in its journal. A dispatcher that Hyprland
+rejects (for example moving a window on an empty workspace) is logged and skipped;
+the camera keeps running. The bar shows starting, active, failed, or off state. It
+reports active only after the first successful inference frame. If switching fails,
+the widget shows **Motion error** and its tooltip carries the reason until the next click.
 
 ## Install
 
@@ -52,7 +55,9 @@ preserved. For a packaging preview, use `python scripts/install.py --prefix /tmp
 
 Model files live in `$XDG_DATA_HOME/omarchy-motion/models` (normally
 `~/.local/share/omarchy-motion/models`). Setup downloads Google's version-1 hand
-and pose-lite task bundles over HTTPS and validates their ZIP contents. For an
+and pose-lite task bundles over HTTPS, checks them against pinned SHA-256 digests,
+and validates their ZIP contents. The pose model loads only while a mapping uses
+**hand_raised**; the default mappings run hand tracking alone. For an
 air-gapped computer, copy the model files and a preprovisioned Python environment
 onto it. There is no network access or automatic download in the tracking loop.
 Model files are distributed by Google under their own terms, separately from this repository.
@@ -78,6 +83,8 @@ test mode and save when ready to control the desktop.
 
 Use even lighting with both hands visible. Hand names mean your anatomical left
 and right. If camera mirroring makes them appear reversed, use **Swap hand labels**.
+Turning **Mirror camera** off also reverses cursor and swipe direction, since both
+follow the preview image.
 Swipes follow the horizontal direction in the preview and require an open palm.
 Pinch thresholds are measured relative to palm length. `pinch_release` must be
 larger than `pinch_threshold` to prevent repeated clicks from small movements.
@@ -105,6 +112,8 @@ To turn off without the widget: `systemctl --user stop omarchy-motion.service`.
 If startup fails, inspect `journalctl --user -u omarchy-motion -n 40`. Check that
 model paths exist, the camera is available, and the service was started from the
 Hyprland session using `omarchy-motion on` (which imports its display environment).
+Desktop actions go over Hyprland's control socket, located through
+`HYPRLAND_INSTANCE_SIGNATURE`; without it, a single running instance is detected.
 
 ## Development and validation
 
@@ -115,8 +124,8 @@ uv build
 .venv/bin/python scripts/check_models.py ~/.local/share/omarchy-motion/models
 ```
 
-The 16 engine, configuration, backend, and lifecycle tests use synthetic landmarks and mocked
-desktop commands. They need no camera, models, or third-party dependencies.
+The 21 engine, configuration, backend, and lifecycle tests use synthetic landmarks, a fake
+Hyprland socket, and mocked models. They need no camera, models, or third-party dependencies.
 Validated with Python 3.12.14, MediaPipe 0.10.35, and OpenCV 4.14.0; the two real
 models also passed blank-frame inference. The staged systemd unit validates and
 the widget passes QML syntax parsing. These checks do not establish live accuracy.
@@ -126,8 +135,8 @@ The preview and settings windows depend on graphical libraries available in the
 user session. Recognition thresholds will need tuning for some cameras/users.
 
 Architecture: `runtime.py` owns capture and local inference; `gestures.py` emits
-actions; `backend.py` dispatches a fixed set of Hyprland commands; `config.py`
-validates and atomically saves settings. The shell widget and settings window
+actions; `backend.py` sends a fixed set of dispatchers over Hyprland's IPC socket
+without spawning processes; `config.py` validates and atomically saves settings. The shell widget and settings window
 control the service. The application uses no root input daemon or shell command
 execution from gesture mappings.
 

@@ -87,6 +87,17 @@ def validate(config):
     return c
 
 
+def parse_field(key, text):
+    """Coerce settings-window text using the setting's canonical type, not whatever the file happens to hold."""
+    kind = type(defaults()[key])
+    if kind is str:
+        return text
+    try:
+        return kind(text)
+    except ValueError:
+        raise ValueError(f"{key} must be {'an integer' if kind is int else 'a number'}") from None
+
+
 def read(path=None):
     path = Path(path or config_path())
     return validate(json.loads(path.read_text())) if path.exists() else defaults()

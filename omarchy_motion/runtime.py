@@ -21,8 +21,13 @@ def notify_ready():
             sock.sendall(b"READY=1")
 
 
+def needs_pose(c):
+    """Body tracking costs a second model per frame; only pay for it when a mapping uses it."""
+    return any(b["enabled"] and b["gesture"] == "hand_raised" for b in c["bindings"])
+
+
 def run(c):
-    for key in ("hand_model", "pose_model"):
+    for key in ("hand_model", "pose_model") if needs_pose(c) else ("hand_model",):
         if not Path(c[key]).is_file():
             raise ValueError(f"Missing {key}: {c[key]}. Run omarchy-motion models first.")
     import cv2
@@ -55,7 +60,7 @@ def run(c):
             base_options=base(model_asset_path=c["pose_model"]),
             running_mode=vision.RunningMode.VIDEO, num_poses=1,
             min_pose_detection_confidence=c["confidence"], min_pose_presence_confidence=c["confidence"],
-            min_tracking_confidence=c["confidence"])))
+            min_tracking_confidence=c["confidence"]))) if needs_pose(c) else None
         cap = cv2.VideoCapture(c["camera"], cv2.CAP_V4L2)
         stack.callback(cap.release)
         if not cap.isOpened():
@@ -74,26 +79,26 @@ def run(c):
                 raise RuntimeError("Camera disconnected or returned an empty frame")
             if stopped:
                 break
-            pose_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            if c["mirror"]:
-                frame = cv2.flip(frame, 1)
+            # One colour conversion per frame. The hand model wants a mirrored selfie view;
+            # the pose model stays unmirrored so its labels remain anatomical.
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            hand_rgb = cv2.flip(rgb, 1) if c["mirror"] else rgb
             timestamp = max(timestamp + 1, int(started * 1000))
-            hand_result = hands.detect_for_video(image, timestamp)
-            # Keep the pose input unmirrored so its labels remain anatomical.
-            pose_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=pose_rgb)
-            pose_result = pose.detect_for_video(pose_image, timestamp)
-            points = {}
+            hand_result = hands.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=hand_rgb), timestamp)
+            pose_result = pose.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), timestamp) if pose else None
+            points, scores = {}, {}
             for categories, landmarks in zip(hand_result.handedness, hand_result.hand_landmarks):
-                if categories[0].score < c["confidence"]:
+                score = categories[0].score
+                if score < c["confidence"]:
                     continue
                 label = categories[0].category_name
                 # Hand model labels assume a mirrored selfie image.
                 if (not c["mirror"]) != c["swap_hands"]:
                     label = "Left" if label == "Right" else "Right"
-                points[label] = [(p.x, p.y) for p in landmarks]
-            body = [(p.x, p.y, p.visibility) for p in pose_result.pose_landmarks[0]] if pose_result.pose_landmarks else []
+                # Two hands can share a label; keep the one the model is surer about.
+                if score > scores.get(label, -1):
+                    points[label], scores[label] = [(p.x, p.y) for p in landmarks], score
+            body = [(p.x, p.y, p.visibility) for p in pose_result.pose_landmarks[0]] if pose_result and pose_result.pose_landmarks else []
             if body and c["mirror"]:
                 body = [(1 - x, y, visibility) for x, y, visibility in body]
             if body and c["swap_hands"]:
@@ -108,6 +113,8 @@ def run(c):
                 notify_ready()
                 ready = True
             if c["preview"] and not stopped:
+                if c["mirror"]:
+                    frame = cv2.flip(frame, 1)
                 for label, landmarks in points.items():
                     wrist = landmarks[0]
                     cv2.putText(frame, label, (int(wrist[0] * frame.shape[1]), int(wrist[1] * frame.shape[0])), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (80, 240, 100), 2)
