@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omarchy-motion"
+version = "0.1.0"
+description = "Offline webcam gesture control for Omarchy and Hyprland"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = ["mediapipe>=0.10.32,<0.11", "opencv-contrib-python>=4.11,<5"]
+
+[project.scripts]
+omarchy-motion = "omarchy_motion.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["omarchy_motion*"]

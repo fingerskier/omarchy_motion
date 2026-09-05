@@ -1,0 +1,3 @@
+include uv.lock
+recursive-include plugin *.json *.qml
+recursive-include scripts *.py

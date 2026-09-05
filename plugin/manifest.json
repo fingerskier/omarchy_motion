@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "fingerskier.motion",
+  "name": "Motion",
+  "version": "0.1.0",
+  "author": "fingerskier",
+  "description": "Offline webcam gesture controls",
+  "kinds": ["bar-widget"],
+  "entryPoints": {"barWidget": "BarWidget.qml"},
+  "barWidget": {
+    "displayName": "Motion",
+    "description": "Click to toggle gesture control; right-click for settings",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
