@@ -22,6 +22,19 @@ BarWidget {
         return "Motion " + root.motionState
     }
 
+    function tooltipText() {
+        return "Motion: " + root.motionState
+            + (root.lastError ? "\n" + root.lastError : "")
+            + "\nClick to toggle · Right-click for settings"
+    }
+
+    // The bar's tooltip takes a text snapshot, so refresh it while hovered when the state or error changes.
+    function refreshTooltip() {
+        if (root.bar && mouseArea.containsMouse) root.bar.showTooltip(root, root.tooltipText())
+    }
+    onMotionStateChanged: refreshTooltip()
+    onLastErrorChanged: refreshTooltip()
+
     function finished(exitCode) {
         if (exitCode !== 0)
             root.lastError = root.pendingError || ("omarchy-motion exited with code " + exitCode)
@@ -69,6 +82,7 @@ BarWidget {
         onTriggered: if (!poll.running) poll.running = true
     }
     MouseArea {
+        id: mouseArea
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
@@ -85,9 +99,7 @@ BarWidget {
             else
                 toggle.running = true
         }
-        onEntered: if (root.bar) root.bar.showTooltip(root, "Motion: " + root.motionState
-            + (root.lastError ? "\n" + root.lastError : "")
-            + "\nClick to toggle · Right-click for settings")
+        onEntered: if (root.bar) root.bar.showTooltip(root, root.tooltipText())
         onExited: if (root.bar) root.bar.hideTooltip(root)
     }
 }

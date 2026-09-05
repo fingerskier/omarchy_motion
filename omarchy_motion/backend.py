@@ -20,20 +20,32 @@ DISPATCHERS = {
 }
 
 
+def alive(path):
+    """A socket entry can outlive its compositor; only a connectable one counts."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.settimeout(1)
+        try:
+            sock.connect(str(path))
+        except OSError:
+            return False
+    return True
+
+
 def socket_path():
     roots = [Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "hypr", Path("/tmp/hypr")]
     signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
     if signature:
-        candidates = [root / signature / ".socket.sock" for root in roots]
-    else:
-        # Started outside the session (for example a terminal without the signature): accept a sole instance.
-        candidates = [p for root in roots if root.is_dir() for p in sorted(root.glob("*/.socket.sock"))]
-        if len(candidates) > 1:
-            raise RuntimeError("Several Hyprland instances found; set HYPRLAND_INSTANCE_SIGNATURE")
-    for path in candidates:
-        if path.exists():
-            return path
-    raise RuntimeError("Hyprland control socket not found; start from a Hyprland session")
+        for path in (root / signature / ".socket.sock" for root in roots):
+            if path.exists():
+                return path
+        raise RuntimeError("Hyprland control socket not found; start from a Hyprland session")
+    # Started outside the session (for example a terminal without the signature): accept a sole live instance.
+    live = [p for root in roots if root.is_dir() for p in sorted(root.glob("*/.socket.sock")) if alive(p)]
+    if len(live) > 1:
+        raise RuntimeError("Several Hyprland instances found; set HYPRLAND_INSTANCE_SIGNATURE")
+    if not live:
+        raise RuntimeError("Hyprland control socket not found; start from a Hyprland session")
+    return live[0]
 
 
 def request(text, path=None):

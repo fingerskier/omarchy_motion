@@ -183,13 +183,27 @@ class BackendTest(unittest.TestCase):
                 self.assertEqual(backend.request("dispatch movecursor 1 2"), "ok")
             thread.join(2)
             server.close()
+            path.unlink()
             self.assertEqual(seen, [b"dispatch movecursor 1 2"])
+            # Discovery without a signature: a stale entry from a dead compositor must not count.
+            stale = path.parent.parent / "dead/.socket.sock"
+            stale.parent.mkdir()
+            socket.socket(socket.AF_UNIX, socket.SOCK_STREAM).bind(str(stale))
             with patch.dict("os.environ", {"XDG_RUNTIME_DIR": d}, clear=True):
+                with self.assertRaisesRegex(RuntimeError, "not found"):
+                    backend.socket_path()
+                listening = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                listening.bind(str(path))
+                listening.listen(1)
                 self.assertEqual(backend.socket_path(), path)
-                (path.parent.parent / "def").mkdir()
-                (path.parent.parent / "def/.socket.sock").touch()
+                (path.parent.parent / "other").mkdir()
+                second = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                second.bind(str(path.parent.parent / "other/.socket.sock"))
+                second.listen(1)
                 with self.assertRaisesRegex(RuntimeError, "Several"):
                     backend.socket_path()
+                listening.close()
+                second.close()
             with patch.dict("os.environ", {"XDG_RUNTIME_DIR": d, "HYPRLAND_INSTANCE_SIGNATURE": "missing"}):
                 with self.assertRaisesRegex(RuntimeError, "not found"):
                     backend.socket_path()
