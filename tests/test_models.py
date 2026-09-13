@@ -79,6 +79,15 @@ class ModelsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             models.verify(path, "https://example.invalid/hand", digest_of(data))
 
+    def test_backslash_entry_rejected(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as archive:
+            archive.writestr("dir\\model.tflite", b"x")
+        data = buf.getvalue()
+        path = self.write_file("hand.task", data)
+        with self.assertRaises(ValueError):
+            models.verify(path, "https://example.invalid/hand", digest_of(data))
+
     def test_size_cap_enforced(self):
         data = make_bundle(os.urandom(2048))
         path = self.write_file("hand.task", data)

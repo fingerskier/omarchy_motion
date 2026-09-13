@@ -148,7 +148,8 @@ def _check_archive(fileobj, url):
             name = info.filename
             if (
                 not name
-                or name.startswith(("/", "\\"))
+                or "\\" in name
+                or name.startswith("/")
                 or len(name) > 1024
                 or ".." in Path(name).parts
                 or (len(name) >= 2 and name[1] == ":")
@@ -174,25 +175,31 @@ def _check_archive(fileobj, url):
 def verify(path, url, digest):
     """Refuse a bundle that is not the pinned, well-formed file.
 
-    Opens no-follow and checks type, owner, mode, size, exact digest,
-    then bounded archive shape. Raises ValueError/OSError on failure.
+    Opens no-follow once and checks type, owner, mode, size, exact digest,
+    then bounded archive shape on the same descriptor. Raises ValueError/OSError
+    on failure.
     """
     _stat_no_follow(path)
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    owned = True
     try:
         actual, _ = _hash_fd(fd)
-    finally:
-        os.close(fd)
-    if actual != digest:
-        raise ValueError(f"Checksum mismatch for {url}: expected {digest}, got {actual}")
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
-    try:
-        with os.fdopen(fd, "rb") as fileobj:
+        if actual != digest:
+            raise ValueError(f"Checksum mismatch for {url}: expected {digest}, got {actual}")
+        os.lseek(fd, 0, os.SEEK_SET)
+        fileobj = os.fdopen(fd, "rb")
+        owned = False
+        try:
             _check_archive(fileobj, url)
-    except ValueError:
-        raise
+        finally:
+            fileobj.close()
     except OSError as exc:
-        raise ValueError(f"Invalid model bundle for {url}: {exc}")
+        if isinstance(exc, FileNotFoundError):
+            raise
+        raise ValueError(f"Invalid model bundle for {url}: {exc}") from exc
+    finally:
+        if owned:
+            os.close(fd)
 
 
 def download(config):
@@ -255,5 +262,8 @@ def download(config):
                 pass
             print(f"Downloaded: {path}")
         finally:
-            if name and os.path.exists(name):
-                os.unlink(name)
+            if name and os.path.lexists(name):
+                try:
+                    os.unlink(name)
+                except FileNotFoundError:
+                    pass
