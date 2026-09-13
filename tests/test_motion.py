@@ -278,6 +278,7 @@ class RuntimeTest(unittest.TestCase):
             with patch.dict("sys.modules", {"cv2": cv, "mediapipe": mp}), \
                  patch.dict("os.environ", {"XDG_RUNTIME_DIR": d}), \
                  patch.object(runtime.signal, "signal", side_effect=install_handler), \
+                 patch("omarchy_motion.models.verify", return_value=None), \
                  patch.object(runtime, "Hyprland") as hypr, \
                  patch.object(runtime, "notify_ready") as ready, \
                  patch.object(runtime.GestureEngine, "step", step):

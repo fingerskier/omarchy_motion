@@ -105,8 +105,14 @@ checkout. To stage installation files without changing the desktop, use
 
 Model files live in `$XDG_DATA_HOME/omarchy-motion/models` (normally
 `~/.local/share/omarchy-motion/models`). Setup downloads Google's version-1 hand
-and pose-lite task bundles over HTTPS, checks them against pinned SHA-256 digests,
-and validates their ZIP contents. The pose model loads only while a mapping uses
+and pose-lite task bundles over HTTPS from `storage.googleapis.com` only (same-host
+redirects, 32 MiB streaming cap with Content-Length pre-check), hashes them with
+streaming SHA-256 against pinned digests, and validates their ZIP contents within
+bounded limits (member count, per-member/total uncompressed sizes, no absolute,
+traversal, or symlink entries, required `.tflite` payload, CRC). Existing files are
+never trusted by presence: they are opened no-follow and re-verified for regular-file
+type, current-user ownership, non-world-writable mode, size, exact digest, and archive
+shape both at download time and before every tracking run. The pose model loads only while a mapping uses
 **hand_raised**; the default mappings run hand tracking alone. For an
 air-gapped computer, copy the model files and a preprovisioned Python environment
 onto it. There is no network access or automatic download in the tracking loop.

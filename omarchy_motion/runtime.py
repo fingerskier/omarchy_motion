@@ -30,9 +30,18 @@ def needs_pose(c):
 
 
 def run(c):
+    from .models import MODELS, verify
     for key in ("hand_model", "pose_model") if needs_pose(c) else ("hand_model",):
-        if not Path(c[key]).is_file():
+        url, digest = MODELS[key]
+        try:
+            verify(c[key], url, digest)
+        except FileNotFoundError:
             raise ValueError(f"Missing {key}: {c[key]}. Run omarchy-motion models first.")
+        except (ValueError, OSError) as exc:
+            raise ValueError(
+                f"Invalid {key}: {c[key]} ({exc}). "
+                "Delete it or run omarchy-motion models to re-fetch the pinned bundle."
+            )
     import cv2
     import mediapipe as mp
 
